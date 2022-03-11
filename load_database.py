@@ -1,13 +1,14 @@
 import pandas as pd
+import numpy as np
 import mysql.connector
 
-from os import listdir
+from os import listdir, remove
 from os.path import isfile, join
 
 default_schema = 'stocks'
 default_date_field = 'Date'
 
-def get_connection(mode = 'append'):
+def get_connection():
     conn = mysql.connector.connect(
         host='localhost',
         user='epdrumond',
@@ -18,6 +19,7 @@ def get_connection(mode = 'append'):
 
     return conn
 
+#Read raw data from csv files
 def read_raw_data(folder_path):
     files = [file for file in listdir(folder_path) if isfile(join(folder_path, file))]
     files = {file: file.split('.')[0] for file in files}
@@ -28,12 +30,13 @@ def read_raw_data(folder_path):
         raw_ticker_data.insert(
             1,
             'Ticker',
-            ["'" + ticker + "'" for i in range(len(raw_ticker_data))]
+            [ticker for i in range(len(raw_ticker_data))]
         )
         raw_data.append(raw_ticker_data)
 
     return pd.concat(raw_data)
 
+#Apply transformations in raw data for insert on DB table
 def transform_input_data(raw_data):
     date_fields = [default_date_field, 'ExtractionDate']
     for date in date_fields:
@@ -43,16 +46,20 @@ def transform_input_data(raw_data):
     for col in decimal_fields:
         raw_data[col] = raw_data[col].round(6)
 
+    raw_data['Ticker'] = ["'" + ticker + "'" for ticker in raw_data['Ticker']]
+
     return raw_data
 
+#Remove data already inserted into the DB table from raw data
 def check_new_data(table_name, raw_data, cursor):
-    query = 'select Ticker, max({}) as max_date from {}.{} group by 1'.format(
+    query = 'select Ticker, max({}) as max_date from {}.{} group by 1;'.format(
         default_date_field, default_schema, table_name
     )
 
     #Get latest date from table
     try:
-        max_date = cursor.execute(query).fetchall()[0][0]
+        cursor.execute(query)
+        max_date = pd.DataFrame(cursor.fetchall(), columns = ['Ticker', 'max_date'])
     except:
         return raw_data
 
@@ -63,7 +70,7 @@ def check_new_data(table_name, raw_data, cursor):
     )
 
     new_data['flag_new'] = [
-        0 if date < max_date else 1
+        1 if (max_date != max_date or np.datetime64(date) > max_date) else 0
         for date, max_date
         in new_data[['Date', 'max_date']].values
     ]
@@ -73,6 +80,7 @@ def check_new_data(table_name, raw_data, cursor):
 
     return new_data
 
+#Bundle every line of data to be inserted into a single command
 def create_insert_command(table_name, data):
     values = ','.join([
         '(' + ','.join([str(val) for val in row]) + ')'
@@ -80,6 +88,7 @@ def create_insert_command(table_name, data):
     ])
     return f'insert into {default_schema}.{table_name} values {values};'
 
+#Main funcion: Load new data into DB table
 def load_table(raw_data_folder, table_name):
     #Get database connection
     conn = get_connection()
@@ -94,12 +103,12 @@ def load_table(raw_data_folder, table_name):
         cursor=cursor
     )
 
-    #print(create_insert_command(
-    #    table_name=table_name,
-    #    data=transform_input_data(input_data)))
-
-    cursor.execute(create_insert_command(table_name=table_name,data=transform_input_data(input_data)))
-    conn.commit()
+    if len(input_data) > 0:
+        cursor.execute(create_insert_command(
+            table_name=table_name,
+            data=transform_input_data(input_data)
+        ))
+        conn.commit()
 
     conn.close()
 
