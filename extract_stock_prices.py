@@ -1,14 +1,22 @@
 import pandas as pd
 import yfinance as yf
-from os.path import join
+from os.path import join, dirname, realpath
+from datetime import datetime
 
-def query_stock_prices(ticker, period, interval, dest):
+def save_raw_data(ticker, period, interval, dest):
     data = yf.download(tickers = ticker, period = period, interval = interval)
-    return data
+    data.index.name = 'Date'
+    data['ExtractionDate'] = datetime.today()
+
+    file_name = ticker + '.csv'
+    data.to_csv(join(dest, file_name), index = True)
 
 if __name__ == '__main__':
-    print(query_stock_prices(
+    current_folder = dirname(realpath('__file__'))
+
+    save_raw_data(
         ticker = 'UBER',
-        period = '90d',
-        interval = '1d'
-    ))
+        period = '2d',
+        interval = '1d',
+        dest = join(current_folder, 'raw_data')
+    )
