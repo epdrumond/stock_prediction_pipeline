@@ -1,10 +1,13 @@
 from airflow.models import DAG
+from airflow.hooks.mysql_hook import MySqlHook
 from airflow.operators.python_operator import PythonOperator
 from airflow.utils.dates import days_ago
 
 from datetime import datetime
 
 from modules.functions import extract_stock_prices, load_database
+
+mysql = MySqlHook(mysql_conn_id='mysql_default')
 
 ARGS = {
     'owner': 'airflow',
@@ -45,7 +48,14 @@ extract_stock_data = PythonOperator(
 
 load_data_into_db = PythonOperator(
     task_id='load_data_into_db',
-    python_callable=
+    python_callable=load_database.load_table,
+    provide_context=False,
+    op_kwargs={
+        'raw_data_folder': extract_params['dest'],
+        'table_name': 'daily_stock_prices',
+        'conn': mysql.get_conn()
+    },
+    dag = dag
 )
 
-extract_stock_data
+extract_stock_data >> load_data_into_db

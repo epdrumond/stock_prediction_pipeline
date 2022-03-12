@@ -1,23 +1,10 @@
 import pandas as pd
 import numpy as np
-import mysql.connector
-
 from os import listdir, remove
 from os.path import isfile, join
 
 default_schema = 'stocks'
 default_date_field = 'Date'
-
-def get_connection():
-    conn = mysql.connector.connect(
-        host='localhost',
-        user='epdrumond',
-        password='epdf1991',
-        database='stocks',
-        auth_plugin='mysql_native_password'
-    )
-
-    return conn
 
 #Read raw data from csv files
 def read_raw_data(folder_path):
@@ -89,10 +76,9 @@ def create_insert_command(table_name, data):
     return f'insert into {default_schema}.{table_name} values {values};'
 
 #Main funcion: Load new data into DB table
-def load_table(raw_data_folder, table_name):
+def load_table(raw_data_folder, table_name, conn, **kwargs):
     #Get database connection
-    conn = get_connection()
-    cursor = conn.cursor(buffered=True)
+    cursor = conn.cursor()
 
     #Append new values to table
     raw_data = read_raw_data(raw_data_folder)
