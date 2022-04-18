@@ -1,5 +1,7 @@
 import pandas as pd
 import numpy as np
+from datetime import datetime
+
 from statsmodels.tsa.stattools import acf
 from sklearn.linear_model import LinearRegression
 
@@ -69,14 +71,57 @@ def get_linear_regression(data, target_field='Open'):
 def predict_stock(data):
     stock_data = get_dataset(data)
 
+    pred_date = stock_data.iloc[-1,:].name
     pred_data = stock_data.iloc[-1,:].drop(index=['Open']).values.reshape(1,-1)
+
     stock_data = stock_data.dropna()
 
     model = get_linear_regression(stock_data)
-    pred = model.predict(pred_data)
+    pred = model.predict(pred_data)[0]
 
-    return pred
+    return {'Date': pred_date, 'Value': pred}
 
+#Store predicted data into table -----------------------------------------------
+def store_prediction(conn, data):
+    insert_command = f'''
+    insert into stocks.predicted_stock_prices values (
+        '{data['Date']}',
+        '{data['Ticker']}',
+        {data['Value']},
+        '{datetime.now().date()} 00:00:00'
+    )'''
+
+    check_date_command = f'''
+    select exists(
+        select *
+        from stocks.daily_stock_prices
+        where
+            Date = '{data['Date']}' and
+            Ticker = '{data['Ticker']}'
+        )
+    '''
+    date_flag = pd.read_sql(check_date_command, conn).values[0][0]
+
+    if not date_flag:
+        cursor = conn.cursor()
+        cursor.execute(insert_command)
+        conn.commit()
+
+def make_prediction(conn, ticker_list):
+    for ticker in ticker_list:
+        query = f'''
+            select
+                Date,
+                Open,
+                Volume
+            from stocks.daily_stock_prices where Ticker = '{ticker}'
+        '''
+        data = pd.read_sql(query, conn)
+
+        pred_data = predict_stock(data)
+        pred_data.update({'Ticker': ticker})
+
+        store_prediction(conn, pred_data)
 
 if __name__ == '__main__':
     conn = mysql.connector.connect(

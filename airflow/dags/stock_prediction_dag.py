@@ -5,7 +5,7 @@ from airflow.utils.dates import days_ago
 
 from datetime import datetime, timedelta
 
-from modules.functions import extract_stock_prices, load_database
+from modules.functions import extract_stock_prices, load_database, predict_stocks
 
 mysql = MySqlHook(mysql_conn_id='mysql_default')
 
@@ -53,4 +53,16 @@ load_data_into_db = PythonOperator(
     dag = dag
 )
 
+pred_stock = PythonOperator(
+    task_id='pred_stock',
+    python_callable=predict_stocks.make_prediction,
+    provide_context=False,
+    op_kwargs={
+        'conn': mysql.get_conn(),
+        'ticker_list': stocks
+    },
+    dag=dag
+)
+
 extract_stock_data >> load_data_into_db
+load_data_into_db >> pred_stock
