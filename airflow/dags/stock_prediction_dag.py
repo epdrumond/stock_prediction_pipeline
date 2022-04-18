@@ -3,7 +3,7 @@ from airflow.hooks.mysql_hook import MySqlHook
 from airflow.operators.python_operator import PythonOperator
 from airflow.utils.dates import days_ago
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from modules.functions import extract_stock_prices, load_database
 
@@ -12,7 +12,7 @@ mysql = MySqlHook(mysql_conn_id='mysql_default')
 ARGS = {
     'owner': 'airflow',
     'depends_on_past': False,
-    'start_date': datetime(2021,1,1)
+    'start_date': datetime.now() - timedelta(days=1)
 }
 
 stocks = [
@@ -20,16 +20,12 @@ stocks = [
     'BRK-B', 'MCK', 'ABC', 'GOOG', 'XOM'
 ]
 
-extract_params = {
-    'period': '3d',
-    'interval': '1d',
-    'dest': '/home/edilson/Desktop/Edilson/Python/stock_data_prediction_pipeline/raw_data'
-}
+DEST = '/home/edilson/Desktop/Edilson/Python/stock_data_prediction_pipeline/raw_data'
 
 dag = DAG(
     dag_id='stock_prediction_dag',
     default_args=ARGS,
-    schedule_interval='* * * * *',
+    schedule_interval='34 */1 * * *',
     max_active_runs=1
 )
 
@@ -39,9 +35,8 @@ extract_stock_data = PythonOperator(
     provide_context=False,
     op_kwargs={
         'ticker_list': stocks,
-        'period': extract_params['period'],
-        'interval': extract_params['interval'],
-        'dest': extract_params['dest'],
+        'dest': DEST,
+        'conn': mysql.get_conn()
     },
     dag=dag
 )
@@ -51,7 +46,7 @@ load_data_into_db = PythonOperator(
     python_callable=load_database.load_table,
     provide_context=False,
     op_kwargs={
-        'raw_data_folder': extract_params['dest'],
+        'raw_data_folder': DEST,
         'table_name': 'daily_stock_prices',
         'conn': mysql.get_conn()
     },
